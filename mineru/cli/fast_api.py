@@ -30,19 +30,19 @@ async def root():
 
 @app.post(path="/file_parse",)
 async def parse_pdf(
-        files: List[UploadFile] = File(...),
+        file: UploadFile = File(...),
         output_dir: str = Form("./output"),
         lang_list: List[str] = Form(["ch"]),
         backend: str = Form("pipeline"),
-        parse_method: str = Form("auto"),
+        parse_method: str = Form("ocr"),
         formula_enable: bool = Form(True),
         table_enable: bool = Form(True),
         server_url: Optional[str] = Form(None),
         return_md: bool = Form(True),
-        return_middle_json: bool = Form(False),
-        return_model_output: bool = Form(False),
-        return_content_list: bool = Form(False),
-        return_images: bool = Form(False),
+        return_middle_json: bool = Form(True),
+        return_model_output: bool = Form(True),
+        return_content_list: bool = Form(True),
+        return_images: bool = Form(True),
         start_page_id: int = Form(0),
         end_page_id: int = Form(99999),
 ):
@@ -53,7 +53,7 @@ async def parse_pdf(
     try:
         # 调用异步处理函数
         response = await submit_parse_pdf_task(
-            files=files,
+            file=file,
             output_dir=output_dir,
             lang_list=lang_list,
             backend=backend,

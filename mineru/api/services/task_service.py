@@ -102,7 +102,8 @@ async def parse_task(task_data):
             **task_data["cmd_args"]
         )
 
-        # 构建结果路径
+    # 构建结果路径
+    return
     result_dict = {}
     for pdf_name in pdf_file_names:
         result_dict[pdf_name] = {}

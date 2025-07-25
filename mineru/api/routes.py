@@ -1,5 +1,6 @@
 import uuid
 import os
+import hashlib
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from datetime import datetime
@@ -63,7 +64,7 @@ async def get_task_status(task_id: str):
     
 
 async def submit_parse_pdf_task(
-        files: List[UploadFile] = File(...),
+        file: UploadFile = File(...),
         output_dir: str = Form("./output"),
         lang_list: List[str] = Form(["ch"]),
         backend: str = Form("pipeline"),
@@ -81,44 +82,52 @@ async def submit_parse_pdf_task(
         cmd_args: dict = {},
 ):
 
-    # 获取命令行配置参数
-    config = cmd_args
-
     try:
+        # 初始化MD5哈希对象
+        md5_hash = hashlib.md5()
+        
+        # ba = bytearray()
+        # 流式读取文件并计算MD5
+        while chunk := await file.read(4096):  # 4KB分块读取
+            md5_hash.update(chunk)
+        
+        # 计算最终的MD5值
+        md5_value = md5_hash.hexdigest()
         # 创建唯一的输出目录
-        unique_dir = os.path.join(output_dir, str(uuid.uuid4()))
+        unique_dir = os.path.join(output_dir, md5_value)
+        # TODO(gaoxincheng): 检查是否已处理过;
         os.makedirs(unique_dir, exist_ok=True)
 
         # 处理上传的PDF文件
         pdf_file_names = []
         pdf_bytes_list = []
 
-        for file in files:
-            content = await file.read()
-            file_path = Path(file.filename)
+        await file.seek(0)  # 重置文件指针()
+        file_path = Path(file.filename)
 
-            # 如果是图像文件或PDF，使用read_fn处理
-            if file_path.suffix.lower() in pdf_suffixes + image_suffixes:
-                # 创建临时文件以便使用read_fn
-                temp_path = Path(unique_dir) / file_path.name
-                with open(temp_path, "wb") as f:
-                    f.write(content)
+        # 如果是图像文件或PDF，使用read_fn处理
+        if file_path.suffix.lower() in pdf_suffixes + image_suffixes:
+            # 创建临时文件以便使用read_fn
+            temp_path = Path(unique_dir) / file_path.name
+            with open(temp_path, "wb") as f:
+                while chunk := await file.read(4096):  # 4KB分块读取
+                    f.write(chunk)
 
-                try:
-                    pdf_bytes = read_fn(temp_path)
-                    pdf_bytes_list.append(pdf_bytes)
-                    pdf_file_names.append(file_path.stem)
-                    os.remove(temp_path)  # 删除临时文件
-                except Exception as e:
-                    return JSONResponse(
-                        status_code=400,
-                        content={"error": f"Failed to load file: {str(e)}"}
-                    )
-            else:
+            try:
+                pdf_bytes = read_fn(temp_path)
+                pdf_bytes_list.append(pdf_bytes)
+                pdf_file_names.append(file_path.stem)
+                os.remove(temp_path)  # 删除临时文件
+            except Exception as e:
                 return JSONResponse(
                     status_code=400,
-                    content={"error": f"Unsupported file type: {file_path.suffix}"}
+                    content={"error": f"Failed to load file: {str(e)}"}
                 )
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Unsupported file type: {file_path.suffix}"}
+            )
 
 
         # 设置语言列表，确保与文件数量一致
@@ -137,17 +146,17 @@ async def submit_parse_pdf_task(
             "formula_enable": formula_enable,
             "table_enable": table_enable,
             "server_url": server_url,
-            "f_draw_layout_bbox": False,
-            "f_draw_span_bbox": False,
+            "f_draw_layout_bbox": True,
+            "f_draw_span_bbox": True,
             "f_dump_md": return_md,
             "f_dump_middle_json": return_middle_json,
             "f_dump_model_output": return_model_output, 
-            "f_dump_orig_pdf": False,
+            "f_dump_orig_pdf": True,
             "f_dump_content_list": return_content_list,
             "f_dump_images" : return_images,
             "start_page_id": start_page_id,
             "end_page_id": end_page_id,
-            "cmd_args": config
+            "cmd_args": cmd_args
         }
         task_id, created_at = submit_task_service(task_data)
         return {
